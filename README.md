@@ -125,8 +125,7 @@ than it looks -- see the finding below.
 
 ## What changed, and why
 
-Everything here is a deviation from the letter of the subject. Each one
-is listed with the reason, because at defense the reason is the point.
+Everything here is a deviation from the letter of the subject.
 
 **`attack` takes a defender.** The subject's signature is
 `attack(self) -> str` and returns a sentence. Here it is
@@ -174,13 +173,8 @@ subject does not authorise, and it exists for one reason: to put the
 architecture under a human at a keyboard, where design mistakes surface
 in seconds rather than in review.
 
-It reads only through the public surface -- factories, `Creature`,
-strategies. It does not reach past the gates and it does not patch
-anything. Delete it and `ex0`, `ex1`, `ex2` and the three subject
-scripts are unaffected.
-
 Pick a Pokemon by name or number, or roll one; pick a level; pick the
-strategy the opponent runs; then fight it with arrow keys, HP bars,
+strategy the auto-opponent runs; then fight it with arrow keys, HP bars,
 type tags and the real damage formula.
 
 ## What the experiment found
@@ -213,25 +207,39 @@ The fix in the code is `VersatileCreature`, which inherits all three
 capabilities, and it works. It is also the tell: when the correct answer
 is "inherit everything", inheritance was not the right axis.
 
-**The capability belongs to the move, not to the creature.** What a
-Pokemon can do is decided by the four moves it happens to know at that
-level, which is data, and it changes when the moves change. Modelling it
-as a class fixes at declaration time something that is only knowable at
-runtime.
+**The capability belongs to the move, not to the creature.** A class is
+chosen once, when the factory constructs the creature. A moveset is
+recomputed at every level. Those are not the same clock, and the
+capability follows the second one.
 
-The code already admits this. `DefensiveStrategy` cannot ask
-`isinstance(creature, HealCapability)` and stop there, because that
-answers "was this class declared with a heal method", which is not the
-question. It has to ask twice:
+Bulbasaur learns Synthesis at level 27. A Bulbasaur built at level 26
+cannot heal; the same species built at level 27 can. Nothing about the
+class changed, and nothing about the class *could* have changed -- the
+factory picks `HealingCreature` or it does not, and it has to pick before
+it knows which moves the level will hand over. 125 species cross that
+line somewhere between level 5 and level 100.
+
+The code already admits this. `DefensiveStrategy` cannot ask whether its
+creature is a `HealCapability` and stop there, because that answers "was
+this class declared with a heal method", which is not the question. It
+has to ask twice:
 
 ```python
-if not hasattr(creature, "heal"):        # can the class do it
+def is_valid(self, creature: Creature) -> bool:
+    return hasattr(creature, HEAL)              # can the class do it
+
+def act(self, attacker: Creature, defender: Creature) -> list[str]:
     ...
-ready = attacker.moves_with_effect("HEAL")   # can this creature do it now
+    ready = attacker.moves_with_effect(HEAL_EFFECT)   # can this one, now
 ```
 
-Two questions where the design promised one. That is the seam, and this
-fork is 14,000 lines of finding it.
+The first question is about the type. The second is about the four moves
+this creature is carrying this turn. The subject's design promised that
+one question would be enough, and every strategy in `ex2` had to ask the
+second one anyway.
+
+That is the seam. Four creatures could never have exposed it. 1025 could
+not hide it.
 
 ## Verification
 
