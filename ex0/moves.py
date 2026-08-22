@@ -6,6 +6,8 @@ THRICE = (3, 3)
 TWO_TO_FIVE = (2, 5)
 ONE_TO_TEN = (1, 10)
 SURE = 100
+HALF_DRAIN = 50
+STRONG_DRAIN = 75
 
 
 class Move(typing.NamedTuple):
@@ -17,12 +19,13 @@ class Move(typing.NamedTuple):
     effect: str
     hits: tuple[int, int] = ONCE
     accuracy: int = SURE
+    drain: int = 0
 
 
 STRUGGLE = Move("Struggle", "Normal", 50, 1, "DAMAGE")
 
 
-ABSORB = Move("Absorb", "Grass", 20, 25, "DAMAGE")
+ABSORB = Move("Absorb", "Grass", 20, 25, "DAMAGE", drain=HALF_DRAIN)
 ACCELEROCK = Move("Accelerock", "Rock", 40, 20, "DAMAGE")
 ACID = Move("Acid", "Poison", 40, 30, "DAMAGE")
 ACID_ARMOR = Move("Acid Armor", "Poison", 0, 20, "GUARD")
@@ -72,7 +75,7 @@ BELLY_DRUM = Move("Belly Drum", "Normal", 0, 10, "BOOST")
 BIDE = Move("Bide", "Normal", 0, 10, "NONE")
 BIND = Move("Bind", "Normal", 15, 20, "DAMAGE")
 BITE = Move("Bite", "Dark", 60, 25, "DAMAGE")
-BITTER_BLADE = Move("Bitter Blade", "Fire", 90, 10, "DAMAGE")
+BITTER_BLADE = Move("Bitter Blade", "Fire", 90, 10, "DAMAGE", drain=HALF_DRAIN)
 BLAZE_KICK = Move("Blaze Kick", "Fire", 85, 10, "DAMAGE")
 BLEAKWIND_STORM = Move("Bleakwind Storm", "Flying", 100, 10, "DAMAGE")
 BLIZZARD = Move("Blizzard", "Ice", 110, 5, "DAMAGE", ONCE, 70)
@@ -177,9 +180,12 @@ DRAGON_HAMMER = Move("Dragon Hammer", "Dragon", 90, 15, "DAMAGE")
 DRAGON_PULSE = Move("Dragon Pulse", "Dragon", 85, 10, "DAMAGE")
 DRAGON_RUSH = Move("Dragon Rush", "Dragon", 100, 10, "DAMAGE")
 DRAGON_TAIL = Move("Dragon Tail", "Dragon", 60, 10, "DAMAGE")
-DRAIN_PUNCH = Move("Drain Punch", "Fighting", 75, 10, "DAMAGE")
-DRAINING_KISS = Move("Draining Kiss", "Fairy", 50, 10, "DAMAGE")
-DREAM_EATER = Move("Dream Eater", "Psychic", 100, 15, "DAMAGE")
+DRAIN_PUNCH = Move("Drain Punch", "Fighting",
+                   75, 10, "DAMAGE", drain=HALF_DRAIN)
+DRAINING_KISS = Move("Draining Kiss", "Fairy",
+                     50, 10, "DAMAGE", drain=STRONG_DRAIN)
+DREAM_EATER = Move("Dream Eater", "Psychic",
+                   100, 15, "DAMAGE", drain=HALF_DRAIN)
 DRILL_PECK = Move("Drill Peck", "Flying", 80, 20, "DAMAGE")
 DRILL_RUN = Move("Drill Run", "Ground", 80, 10, "DAMAGE")
 DRUM_BEATING = Move("Drum Beating", "Grass", 80, 10, "DAMAGE")
@@ -267,7 +273,7 @@ GASTRO_ACID = Move("Gastro Acid", "Poison", 0, 10, "NONE")
 GEAR_GRIND = Move("Gear Grind", "Steel", 50, 15, "DAMAGE", TWICE)
 GEAR_UP = Move("Gear Up", "Steel", 0, 20, "NONE")
 GEOMANCY = Move("Geomancy", "Fairy", 0, 10, "BOOST")
-GIGA_DRAIN = Move("Giga Drain", "Grass", 75, 10, "DAMAGE")
+GIGA_DRAIN = Move("Giga Drain", "Grass", 75, 10, "DAMAGE", drain=HALF_DRAIN)
 GIGA_IMPACT = Move("Giga Impact", "Normal", 150, 5, "DAMAGE", ONCE, 90)
 GIGATON_HAMMER = Move("Gigaton Hammer", "Steel", 160, 5, "DAMAGE")
 GLACIATE = Move("Glaciate", "Ice", 65, 10, "DAMAGE")
@@ -309,7 +315,7 @@ HIGH_JUMP_KICK = Move("High Jump Kick", "Fighting", 130, 10, "DAMAGE")
 HONE_CLAWS = Move("Hone Claws", "Dark", 0, 15, "BOOST")
 HORN_ATTACK = Move("Horn Attack", "Normal", 65, 25, "DAMAGE")
 HORN_DRILL = Move("Horn Drill", "Normal", 0, 5, "NONE")
-HORN_LEECH = Move("Horn Leech", "Grass", 75, 10, "DAMAGE")
+HORN_LEECH = Move("Horn Leech", "Grass", 75, 10, "DAMAGE", drain=HALF_DRAIN)
 HOWL = Move("Howl", "Normal", 0, 40, "BOOST")
 HURRICANE = Move("Hurricane", "Flying", 110, 10, "DAMAGE", ONCE, 70)
 HYDRO_PUMP = Move("Hydro Pump", "Water", 110, 5, "DAMAGE", ONCE, 80)
@@ -356,7 +362,7 @@ LEAF_BLADE = Move("Leaf Blade", "Grass", 90, 15, "DAMAGE")
 LEAF_STORM = Move("Leaf Storm", "Grass", 130, 5, "DAMAGE", ONCE, 90)
 LEAF_TORNADO = Move("Leaf Tornado", "Grass", 65, 10, "DAMAGE")
 LEAFAGE = Move("Leafage", "Grass", 40, 40, "DAMAGE")
-LEECH_LIFE = Move("Leech Life", "Bug", 80, 10, "DAMAGE")
+LEECH_LIFE = Move("Leech Life", "Bug", 80, 10, "DAMAGE", drain=HALF_DRAIN)
 LEECH_SEED = Move("Leech Seed", "Grass", 0, 10, "NONE")
 LEER = Move("Leer", "Normal", 0, 30, "NONE")
 LICK = Move("Lick", "Ghost", 30, 30, "DAMAGE")
@@ -382,9 +388,10 @@ MAGNET_RISE = Move("Magnet Rise", "Electric", 0, 10, "GUARD")
 MAGNETIC_FLUX = Move("Magnetic Flux", "Electric", 0, 20, "NONE")
 MAKE_IT_RAIN = Move("Make It Rain", "Steel", 120, 5, "DAMAGE")
 MALIGNANT_CHAIN = Move("Malignant Chain", "Poison", 100, 5, "DAMAGE")
-MATCHA_GOTCHA = Move("Matcha Gotcha", "Grass", 80, 15, "DAMAGE")
+MATCHA_GOTCHA = Move("Matcha Gotcha", "Grass",
+                     80, 15, "DAMAGE", drain=HALF_DRAIN)
 MEAN_LOOK = Move("Mean Look", "Normal", 0, 5, "NONE")
-MEGA_DRAIN = Move("Mega Drain", "Grass", 40, 15, "DAMAGE")
+MEGA_DRAIN = Move("Mega Drain", "Grass", 40, 15, "DAMAGE", drain=HALF_DRAIN)
 MEGA_KICK = Move("Mega Kick", "Normal", 120, 5, "DAMAGE", ONCE, 75)
 MEGA_PUNCH = Move("Mega Punch", "Normal", 80, 20, "DAMAGE", ONCE, 85)
 MEGAHORN = Move("Megahorn", "Bug", 120, 10, "DAMAGE", ONCE, 85)
@@ -427,7 +434,8 @@ NIGHT_SLASH = Move("Night Slash", "Dark", 70, 15, "DAMAGE")
 NO_RETREAT = Move("No Retreat", "Fighting", 0, 5, "BOOST")
 NOBLE_ROAR = Move("Noble Roar", "Normal", 0, 30, "NONE")
 NUZZLE = Move("Nuzzle", "Electric", 20, 20, "DAMAGE")
-OBLIVION_WING = Move("Oblivion Wing", "Flying", 80, 10, "DAMAGE")
+OBLIVION_WING = Move("Oblivion Wing", "Flying",
+                     80, 10, "DAMAGE", drain=STRONG_DRAIN)
 OBSTRUCT = Move("Obstruct", "Dark", 0, 10, "PROTECT")
 OCTAZOOKA = Move("Octazooka", "Water", 65, 10, "DAMAGE")
 OCTOLOCK = Move("Octolock", "Fighting", 0, 15, "NONE")
@@ -438,7 +446,8 @@ OUTRAGE = Move("Outrage", "Dragon", 120, 10, "DAMAGE")
 OVERDRIVE = Move("Overdrive", "Electric", 80, 10, "DAMAGE")
 OVERHEAT = Move("Overheat", "Fire", 130, 5, "DAMAGE", ONCE, 90)
 PAIN_SPLIT = Move("Pain Split", "Normal", 0, 20, "NONE")
-PARABOLIC_CHARGE = Move("Parabolic Charge", "Electric", 65, 20, "DAMAGE")
+PARABOLIC_CHARGE = Move("Parabolic Charge", "Electric",
+                        65, 20, "DAMAGE", drain=HALF_DRAIN)
 PARTING_SHOT = Move("Parting Shot", "Dark", 0, 20, "NONE")
 PAY_DAY = Move("Pay Day", "Normal", 40, 20, "DAMAGE")
 PAYBACK = Move("Payback", "Dark", 50, 10, "DAMAGE")

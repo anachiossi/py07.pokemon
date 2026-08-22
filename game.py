@@ -84,7 +84,10 @@ DUO = Sides("Player 1", "Player 2",
 
 def read_key() -> str:
     if not sys.stdin.isatty():
-        return sys.stdin.readline().rstrip("\n")
+        line = sys.stdin.readline()
+        if not line:
+            raise KeyboardInterrupt
+        return line.rstrip("\n")
     handle = sys.stdin.fileno()
     saved = termios.tcgetattr(handle)
     try:
@@ -147,8 +150,14 @@ def beat(seconds: float = BEAT) -> None:
         time.sleep(seconds)
 
 
+def counter(creature: Creature, value: int) -> str:
+    """Fixed width, so the bar beside it never shifts column."""
+    width = len(str(creature.max_hp))
+    return f"{value:>{width}}/{creature.max_hp}"
+
+
 def bar_text(creature: Creature) -> str:
-    return f"{FULL * BAR_WIDTH} {creature.current_hp}/{creature.max_hp}"
+    return f"{FULL * BAR_WIDTH} {counter(creature, creature.max_hp)}"
 
 
 def right(plain: str, coloured: str) -> str:
@@ -167,7 +176,7 @@ def bar(creature: Creature, shown: int | None = None) -> str:
     else:
         colour = RED
     drawn = FULL * filled + EMPTY * (BAR_WIDTH - filled)
-    return f"{colour}{drawn}{RESET} {value}/{creature.max_hp}"
+    return f"{colour}{drawn}{RESET} {counter(creature, value)}"
 
 
 def side_label(side: str) -> str:
@@ -484,6 +493,18 @@ def battle(player: Creature, rival: Creature,
                 return
 
 
+def rematch(player: Creature, rival: Creature,
+            strategy: BattleStrategy | None, sides: Sides) -> None:
+    """The same two creatures, restored, for as long as they want."""
+    while True:
+        battle(player, rival, strategy, sides)
+        if pick("Want to replay this battle?", ["Yes", "No"]) == 1:
+            print(f"\n{DIM}Got away safely!{RESET}")
+            return
+        player.restore()
+        rival.restore()
+
+
 def ready() -> bool:
     if pick("Are you ready to battle?", ["Yes", "No"]) == 1:
         print("Maybe next time.")
@@ -499,7 +520,7 @@ def single_player() -> None:
     print(f"\nYou chose {BOLD}{player.name}{RESET}.")
     print(f"Your opponent is {BOLD}{rival.name}{RESET}.")
     if ready():
-        battle(player, rival, strategy)
+        rematch(player, rival, strategy, SOLO)
 
 
 def two_players() -> None:
@@ -511,7 +532,7 @@ def two_players() -> None:
     print(f"\n{DUO.player} sends out {BOLD}{player.name}{RESET}.")
     print(f"{DUO.rival} sends out {BOLD}{rival.name}{RESET}.")
     if ready():
-        battle(player, rival, None, DUO)
+        rematch(player, rival, None, DUO)
 
 
 def main() -> None:

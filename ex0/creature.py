@@ -67,13 +67,17 @@ class Creature(ABC):
         self.level = level
         self.moves = moves
         self.max_hp = stat(pokemon.hp, level) + level + 10
-        self.current_hp = self.max_hp
-        self.attack_stat = stat(pokemon.attack, level) + 5
-        self.defense_stat = stat(pokemon.defense, level) + 5
-        self.base_attack = self.attack_stat
-        self.base_defense = self.defense_stat
+        self.base_attack = stat(pokemon.attack, level) + 5
+        self.base_defense = stat(pokemon.defense, level) + 5
         self.speed_stat = stat(pokemon.speed, level) + 5
-        self.pp = {move.name: move.pp for move in moves}
+        self.restore()
+
+    def restore(self) -> None:
+        """Back to the state a battle starts from."""
+        self.current_hp = self.max_hp
+        self.pp = {move.name: move.pp for move in self.moves}
+        self.attack_stat = self.base_attack
+        self.defense_stat = self.base_defense
         self.attack_stage = 0
         self.defense_stage = 0
         self.protected = False
@@ -144,6 +148,12 @@ class Creature(ABC):
     def take(self, amount: int) -> None:
         self.current_hp = max(0, self.current_hp - amount)
 
+    def absorb(self, amount: int) -> int:
+        """Heal, never past full, and report what actually went in."""
+        gained = min(amount, self.max_hp - self.current_hp)
+        self.current_hp += gained
+        return gained
+
     def raise_attack(self, steps: int = 1) -> int:
         """Climb the attack stages, returning how many were gained."""
         room = MAX_STAGE - self.attack_stage
@@ -176,10 +186,13 @@ class Creature(ABC):
             return f"{line}\n{self.name}'s attack missed!"
         hit = self.damage_to(defender, move)
         landed = 0
+        dealt = 0
         for _ in range(roll_hits(move)):
             if defender.fainted():
                 break
+            before = defender.current_hp
             defender.take(varied(hit))
+            dealt += before - defender.current_hp
             landed += 1
         if move is not STRUGGLE:
             chart = effectiveness(move.element, defender.elements)
@@ -188,6 +201,9 @@ class Creature(ABC):
                 line = f"{line}\n{note}"
         if move.hits != ONCE:
             line = f"{line}\nHit {landed} time(s)!"
+        if move.drain and dealt:
+            self.absorb(dealt * move.drain // ODDS_MAX)
+            line = f"{line}\n{defender.name} had its energy drained!"
         if move is STRUGGLE:
             self.take(self.max_hp // RECOIL_DIVISOR)
             line = f"{line}\n{self.name} is hit with recoil!"

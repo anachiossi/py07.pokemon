@@ -107,6 +107,14 @@ below Flamethrower at 90 and 100, exactly as it should. `damage_to`
 itself stays pure and deterministic: rolling inside it would make the
 strategies non-repeatable.
 
+Twelve moves also carry a `drain` share: Giga Drain, Leech Life, Drain
+Punch and nine others heal their user for 50% of the damage they land,
+Draining Kiss and Oblivion Wing for 75%. They stay `DAMAGE` moves rather
+than becoming a fourth effect, so nothing else has to learn about them --
+the strategies still rank them as attacks, `heal` still ignores them, and
+39 species reach Lv.100 with one in their best four. The heal is taken
+from damage actually dealt, so an immune target yields nothing.
+
 Struggle is the fallback when nothing has PP left, on both sides of the
 screen. It ignores STAB and the type chart -- it will hit a Ghost that
 is immune to Normal -- and costs its user a quarter of max HP.
@@ -209,6 +217,10 @@ by name or number, from the starters -- where a third menu lets you take
 Charmander, Charmeleon or Charizard rather than always the last form --
 or roll one; pick a level; against the machine, pick the strategy it
 runs. Then fight with arrow keys, HP bars, type tags and per-move power.
+When someone faints it offers a rematch: `Creature.restore` puts HP, PP,
+stat stages and flags back to where a battle starts, so the replay is the
+same two creatures rather than a fresh roll. Decline and it says what it
+says when you quit -- `Got away safely!`.
 
 The arithmetic is the mainline damage formula,
 `(((2*L/5 + 2) * Power * A/D) / 50 + 2) * STAB * type * (0.85..1.00)`,
