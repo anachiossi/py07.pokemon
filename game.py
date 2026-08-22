@@ -14,11 +14,10 @@ import typing
 
 from ex0 import PokedexFactory
 from ex0.creature import Creature
-from ex0.moves import Move
+from ex0.moves import STRUGGLE, Move
 from ex0.pokedex import POKEDEX
 from ex0.pokemon import Pokemon, known_moves
 from ex0.roll import between, seed
-from ex0.typechart import effect_message, effectiveness
 from ex1.creature import VersatileCreature
 from ex2 import (AggressiveStrategy, BattleStrategy, DefensiveStrategy,
                  EasyStrategy, NormalStrategy)
@@ -62,9 +61,25 @@ ENTER = ("\r", "\n")
 QUIT = ("q", "Q", "\x03", "\x04")
 FIRST_NUMBER = 1
 LAST_NUMBER = 1025
+NAME_WIDTH = 13
+ELEMENT_WIDTH = 16
 TYPES = ("Fire", "Water", "Grass")
 FAMILIES = {"Fire": "Flame", "Water": "Aqua", "Grass": "Flora"}
 GENERATIONS = 9
+
+
+class Sides(typing.NamedTuple):
+    """Who sits behind each half of the screen, and how a win reads."""
+
+    player: str
+    rival: str
+    player_wins: str
+    rival_wins: str
+
+
+SOLO = Sides("", "", "You win!", "You lose.")
+DUO = Sides("Player 1", "Player 2",
+            "Player 1 wins!", "Player 2 wins!")
 
 
 def read_key() -> str:
@@ -155,17 +170,24 @@ def bar(creature: Creature, shown: int | None = None) -> str:
     return f"{colour}{drawn}{RESET} {value}/{creature.max_hp}"
 
 
+def side_label(side: str) -> str:
+    return f"{side}  " if side else ""
+
+
 def frame(player: Creature, rival: Creature, log: list[str],
-          show_player: int | None, show_rival: int | None) -> list[str]:
-    head = f"{rival.name} Lv.{rival.level}  {tags_text(rival)}"
+          show_player: int | None, show_rival: int | None,
+          sides: Sides = SOLO) -> list[str]:
+    top = side_label(sides.rival)
+    bottom = side_label(sides.player)
+    head = f"{top}{rival.name} Lv.{rival.level}  {tags_text(rival)}"
     lines = [
         f"{BOLD}=== POKEMON BATTLE ==={RESET}",
         "",
-        right(head, f"{BOLD}{rival.name}{RESET}"
+        right(head, f"{DIM}{top}{RESET}{BOLD}{rival.name}{RESET}"
                     f" Lv.{rival.level}  {tags(rival)}"),
         right(bar_text(rival), bar(rival, show_rival)),
         "",
-        f"{BOLD}{player.name}{RESET}"
+        f"{DIM}{bottom}{RESET}{BOLD}{player.name}{RESET}"
         f" Lv.{player.level}  {tags(player)}",
         f"{bar(player, show_player)}",
         f"{DIM}{'-' * SCREEN_WIDTH}{RESET}",
@@ -180,8 +202,9 @@ def frame(player: Creature, rival: Creature, log: list[str],
 
 def render(player: Creature, rival: Creature, log: list[str],
            show_player: int | None = None,
-           show_rival: int | None = None) -> None:
-    lines = frame(player, rival, log, show_player, show_rival)
+           show_rival: int | None = None,
+           sides: Sides = SOLO) -> None:
+    lines = frame(player, rival, log, show_player, show_rival, sides)
     if not sys.stdin.isatty():
         print("\n".join(lines))
         return
@@ -208,18 +231,54 @@ def ask_number() -> int:
         print(f"{RED}No such pokemon.{RESET}")
 
 
-def ask_starter() -> int:
-    element = TYPES[pick("Which type?", list(TYPES))]
-    labels = [f"Generation {n}" for n in range(1, GENERATIONS + 1)]
-    generation = pick("Which generation?", labels) + 1
+def previous_form(pokemon: Pokemon) -> Pokemon | None:
+    for entry in POKEDEX.values():
+        if entry.evolves_into is pokemon:
+            return entry
+    return None
+
+
+def chain(pokemon: Pokemon) -> list[Pokemon]:
+    line = [pokemon]
+    while line[-1].evolves and line[-1].evolves_into is not None:
+        line.append(line[-1].evolves_into)
+    return line
+
+
+def stage_note(before: Pokemon) -> str:
+    if before.evolves_at:
+        return f"from Lv.{before.evolves_at}"
+    return "evolved form"
+
+
+def stage_labels(line: list[Pokemon]) -> list[str]:
+    labels = []
+    for index, form in enumerate(line):
+        plain = " ".join(form.elements).upper()
+        pad = " " * max(0, ELEMENT_WIDTH - len(plain))
+        coloured = " ".join(tag(part) for part in form.elements)
+        note = stage_note(line[index - 1]) if index else "first form"
+        labels.append(f"{form.name:<{NAME_WIDTH}}{coloured}{pad}"
+                      f"{DIM}{note}{RESET}")
+    return labels
+
+
+def starter_base(element: str, generation: int) -> Pokemon:
     family = FAMILIES[element]
     for entry in POKEDEX.values():
         if entry.family == family and entry.generation == generation:
             if entry.starter and entry.evolves:
-                if not any(other.evolves_into is entry
-                           for other in POKEDEX.values()):
-                    return entry.number
-    return FIRST_NUMBER
+                if previous_form(entry) is None:
+                    return entry
+    return POKEDEX[FIRST_NUMBER]
+
+
+def ask_starter() -> Pokemon:
+    element = TYPES[pick("Which type?", list(TYPES))]
+    labels = [f"Generation {n}" for n in range(1, GENERATIONS + 1)]
+    generation = pick("Which generation?", labels) + 1
+    line = chain(starter_base(element, generation))
+    return line[pick("Which form?", stage_labels(line))]
 
 
 def choose_level() -> int | None:
@@ -233,19 +292,24 @@ def choose_level() -> int | None:
     return None
 
 
-def build_creature(number: int, level: int | None) -> Creature:
-    final = PokedexFactory(number, level).create_final()
-    return VersatileCreature(final_form(POKEDEX[number]),
-                             final.level, final.moves)
-
-
 def final_form(pokemon: Pokemon) -> Pokemon:
-    while pokemon.evolves and pokemon.evolves_into is not None:
-        pokemon = pokemon.evolves_into
-    return pokemon
+    return chain(pokemon)[-1]
 
 
-def candidates(effect: str, level: int | None) -> list[int]:
+def stage_creature(pokemon: Pokemon, level: int | None) -> Creature:
+    """Build this exact form, on the level band its stage lives in."""
+    before = previous_form(pokemon)
+    if before is None:
+        return PokedexFactory(pokemon.number, level).create_base()
+    return PokedexFactory(before.number, level).create_evolved()
+
+
+def build_creature(pokemon: Pokemon, level: int | None) -> Creature:
+    rolled = stage_creature(pokemon, level)
+    return VersatileCreature(pokemon, rolled.level, rolled.moves)
+
+
+def candidates(effect: str, level: int | None) -> list[Pokemon]:
     found = []
     for entry in POKEDEX.values():
         grown = final_form(entry)
@@ -253,19 +317,19 @@ def candidates(effect: str, level: int | None) -> list[int]:
         has_effect = any(m.effect == effect for m in moves)
         can_hit = any(m.effect == "DAMAGE" for m in moves)
         if has_effect and can_hit:
-            found.append(entry.number)
+            found.append(grown)
     return found
 
 
-def choose_number() -> int:
-    index = pick("Choose your pokemon", ["From the whole pokedex",
-                                         "From the starters",
-                                         "Surprise me"])
+def choose_pokemon(title: str = "Choose your pokemon") -> Pokemon:
+    index = pick(title, ["From the whole pokedex",
+                         "From the starters",
+                         "Surprise me"])
     if index == 0:
-        return ask_number()
+        return POKEDEX[ask_number()]
     if index == 1:
         return ask_starter()
-    return between(FIRST_NUMBER, LAST_NUMBER)
+    return final_form(POKEDEX[between(FIRST_NUMBER, LAST_NUMBER)])
 
 
 def choose_rival(level: int | None
@@ -277,12 +341,12 @@ def choose_rival(level: int | None
         return PokedexFactory(number, level).create_final(), EasyStrategy()
     if index == 2:
         pool = candidates("BOOST", level)
-        number = pool[between(0, len(pool) - 1)]
-        return build_creature(number, level), AggressiveStrategy()
+        return (build_creature(pool[between(0, len(pool) - 1)], level),
+                AggressiveStrategy())
     if index == 3:
         pool = candidates("HEAL", level)
-        number = pool[between(0, len(pool) - 1)]
-        return build_creature(number, level), DefensiveStrategy()
+        return (build_creature(pool[between(0, len(pool) - 1)], level),
+                DefensiveStrategy())
     number = between(FIRST_NUMBER, LAST_NUMBER)
     plain = PokedexFactory(number, level)
     return plain.create_final(), NormalStrategy()
@@ -304,48 +368,43 @@ def move_labels(creature: Creature) -> list[str]:
         left = creature.pp[move.name]
         kind, tint = KINDS[move.effect]
         shade = RESET if left else RED
+        power = f"{move.power:>3}" if move.power else "  -"
         labels.append(f"{move.name:<16}"
                       f"{tag(move.element, 9)}"
                       f"{tint}{kind:<8}{RESET}"
+                      f"{DIM}PWR{RESET} {power}  "
                       f"{shade}PP {left:>2}/{move.pp:<2}{RESET}")
     return labels
 
 
-def choose_move(player: Creature) -> Move | None:
-    names = move_labels(player)
+def choose_move(creature: Creature, side: str = "") -> Move | None:
+    names = move_labels(creature)
     if not names:
         return None
-    choice = pick(f"{player.name}, choose a move", names)
-    return player.moves[choice]
+    who = f"{side} - {creature.name}" if side else creature.name
+    choice = pick(f"{who}, choose a move", names)
+    return creature.moves[choice]
 
 
-def player_turn(player: Creature, rival: Creature,
-                move: Move | None) -> list[str]:
+def human_turn(attacker: Creature, defender: Creature,
+               move: Move | None) -> list[str]:
     if move is None:
-        return [f"{player.name} has no moves left!"]
-    if not player.has_pp(move):
-        return [f"{move.name} has no PP left!"]
-    if move.effect == "HEAL" and hasattr(player, "heal"):
-        return [typing.cast(Healer, player).heal()]
-    if move.effect in ("GUARD", "PROTECT") and hasattr(player, "guard"):
-        return [typing.cast(Defender, player).guard()]
-    if move.effect == "BOOST" and hasattr(player, "transform"):
-        return [typing.cast(Transformer, player).transform()]
-    player.spend(move)
+        return [attacker.strike(defender, STRUGGLE)]
+    if not attacker.has_pp(move):
+        if any(attacker.has_pp(other) for other in attacker.moves):
+            return [f"{move.name} has no PP left!"]
+        return [attacker.strike(defender, STRUGGLE)]
+    if move.effect == "HEAL" and hasattr(attacker, "heal"):
+        return [typing.cast(Healer, attacker).heal()]
+    if move.effect in ("GUARD", "PROTECT") and hasattr(attacker, "guard"):
+        return [typing.cast(Defender, attacker).guard()]
+    if move.effect == "BOOST" and hasattr(attacker, "transform"):
+        return [typing.cast(Transformer, attacker).transform()]
     if not move.power:
-        return [f"{player.name} uses {move.name}!"
+        attacker.spend(move)
+        return [f"{attacker.name} uses {move.name}!"
                 f" But nothing happened!"]
-    if rival.protected:
-        rival.protected = False
-        return [f"{player.name} uses {move.name}!"
-                f" But {rival.name} protected itself!"]
-    hit = player.damage_to(rival, move)
-    rival.take(hit)
-    lines = [f"{player.name} uses {move.name}!"]
-    note = effect_message(effectiveness(move.element, rival.elements))
-    if note:
-        lines.append(note)
-    return lines
+    return [attacker.strike(defender, move)]
 
 
 def rival_turn(strategy: BattleStrategy, rival: Creature,
@@ -354,24 +413,26 @@ def rival_turn(strategy: BattleStrategy, rival: Creature,
 
 
 def drain(player: Creature, rival: Creature, log: list[str],
-          was_player: int, was_rival: int) -> None:
+          was_player: int, was_rival: int,
+          sides: Sides = SOLO) -> None:
     if not sys.stdin.isatty():
         return
     for step in range(1, DRAIN_STEPS + 1):
         share = step / DRAIN_STEPS
         now_p = was_player + int((player.current_hp - was_player) * share)
         now_r = was_rival + int((rival.current_hp - was_rival) * share)
-        render(player, rival, log, now_p, now_r)
+        render(player, rival, log, now_p, now_r, sides)
         time.sleep(FRAME)
 
 
 def resolve(player: Creature, rival: Creature, log: list[str],
-            lines: list[str], was_player: int, was_rival: int) -> None:
+            lines: list[str], was_player: int, was_rival: int,
+            sides: Sides = SOLO) -> None:
     for line in unfold(lines):
         log.append(line)
-        render(player, rival, log, was_player, was_rival)
+        render(player, rival, log, was_player, was_rival, sides)
         beat()
-    drain(player, rival, log, was_player, was_rival)
+    drain(player, rival, log, was_player, was_rival, sides)
 
 
 def unfold(lines: list[str]) -> list[str]:
@@ -381,51 +442,88 @@ def unfold(lines: list[str]) -> list[str]:
     return out
 
 
+def turn_lines(player: Creature, rival: Creature, is_player: bool,
+               move: Move | None, counter: Move | None,
+               strategy: BattleStrategy | None) -> list[str]:
+    if is_player:
+        return human_turn(player, rival, move)
+    if strategy is not None:
+        return rival_turn(strategy, rival, player)
+    return human_turn(rival, player, counter)
+
+
 def battle(player: Creature, rival: Creature,
-           strategy: BattleStrategy) -> None:
+           strategy: BattleStrategy | None,
+           sides: Sides = SOLO) -> None:
     log: list[str] = []
     faster = player.speed_stat >= rival.speed_stat
     while True:
-        render(player, rival, log)
-        move = choose_move(player)
+        render(player, rival, log, sides=sides)
+        move = choose_move(player, sides.player)
+        counter = None
+        if strategy is None:
+            counter = choose_move(rival, sides.rival)
         if faster:
             order = (True, False)
         else:
             order = (False, True)
         for is_player in order:
-            if is_player:
-                was_p, was_r = player.current_hp, rival.current_hp
-                resolve(player, rival, log,
-                        player_turn(player, rival, move), was_p, was_r)
-                if rival.fainted():
-                    log.append(f"{GREEN}{rival.name} fainted."
-                               f" You win!{RESET}")
-                    render(player, rival, log)
-                    return
-            else:
-                was_p, was_r = player.current_hp, rival.current_hp
-                resolve(player, rival, log,
-                        rival_turn(strategy, rival, player), was_p, was_r)
-                if player.fainted():
-                    log.append(f"{RED}{player.name} fainted."
-                               f" You lose.{RESET}")
-                    render(player, rival, log)
-                    return
+            was_p, was_r = player.current_hp, rival.current_hp
+            lines = turn_lines(player, rival, is_player,
+                               move, counter, strategy)
+            resolve(player, rival, log, lines, was_p, was_r, sides)
+            if rival.fainted():
+                log.append(f"{GREEN}{rival.name} fainted."
+                           f" {sides.player_wins}{RESET}")
+                render(player, rival, log, sides=sides)
+                return
+            if player.fainted():
+                log.append(f"{RED}{player.name} fainted."
+                           f" {sides.rival_wins}{RESET}")
+                render(player, rival, log, sides=sides)
+                return
+
+
+def ready() -> bool:
+    if pick("Are you ready to battle?", ["Yes", "No"]) == 1:
+        print("Maybe next time.")
+        return False
+    return True
+
+
+def single_player() -> None:
+    pokemon = choose_pokemon()
+    level = choose_level()
+    player = build_creature(pokemon, level)
+    rival, strategy = choose_rival(level)
+    print(f"\nYou chose {BOLD}{player.name}{RESET}.")
+    print(f"Your opponent is {BOLD}{rival.name}{RESET}.")
+    if ready():
+        battle(player, rival, strategy)
+
+
+def two_players() -> None:
+    first = choose_pokemon(f"{DUO.player}, choose your pokemon")
+    second = choose_pokemon(f"{DUO.rival}, choose your pokemon")
+    level = choose_level()
+    player = build_creature(first, level)
+    rival = build_creature(second, level)
+    print(f"\n{DUO.player} sends out {BOLD}{player.name}{RESET}.")
+    print(f"{DUO.rival} sends out {BOLD}{rival.name}{RESET}.")
+    if ready():
+        battle(player, rival, None, DUO)
 
 
 def main() -> None:
     seed(time.time_ns())
     print(f"{BOLD}=== POKEMON BATTLE ==={RESET}")
-    number = choose_number()
-    level = choose_level()
-    player = build_creature(number, level)
-    rival, strategy = choose_rival(level)
-    print(f"\nYou chose {BOLD}{player.name}{RESET}.")
-    print(f"Your opponent is {BOLD}{rival.name}{RESET}.")
-    if pick("Are you ready to battle?", ["Yes", "No"]) == 1:
-        print("Maybe next time.")
-        return
-    battle(player, rival, strategy)
+    mode = pick("How many players?",
+                ["Single player  (you against a strategy)",
+                 "Two players    (same terminal)"])
+    if mode == 0:
+        single_player()
+    else:
+        two_players()
 
 
 if __name__ == "__main__":

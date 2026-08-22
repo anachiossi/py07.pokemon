@@ -1,11 +1,12 @@
 import typing
 from abc import ABC, abstractmethod
 
-from ex0.creature import Creature
+from ex0.creature import MAX_STAGE, Creature
 
 from .errors import InvalidStrategy
 
 
+SETUP_STAGES = 1
 GUARD = "guard"
 HEAL = "heal"
 HEAL_EFFECT = "HEAL"
@@ -84,12 +85,9 @@ class AggressiveStrategy(BattleStrategy):
             raise self.refuse(attacker)
         shifter = typing.cast(Transformer, attacker)
         ready = attacker.moves_with_effect(BOOST_EFFECT)
-        if not attacker.boosted and ready:
+        if ready and attacker.attack_stage < SETUP_STAGES:
             return [shifter.transform()]
-        lines = [attacker.attack(defender)]
-        if attacker.boosted:
-            lines.append(shifter.revert())
-        return lines
+        return [attacker.attack(defender)]
 
 
 class DefensiveStrategy(BattleStrategy):
@@ -103,7 +101,7 @@ class DefensiveStrategy(BattleStrategy):
         if not self.is_valid(attacker):
             raise self.refuse(attacker)
         shields = attacker.moves_with_effect(GUARD_EFFECT)
-        if shields and not attacker.guarded:
+        if shields and attacker.defense_stage < MAX_STAGE:
             if hasattr(attacker, GUARD):
                 attacker.attacked = True
                 shell = typing.cast(Defender, attacker)

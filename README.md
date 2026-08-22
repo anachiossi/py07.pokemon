@@ -89,6 +89,28 @@ between 16 and 36. Stats derive from the species base stats and that
 level; the move set is whatever the species has actually learned by
 then, best four.
 
+A move carries a `hits` range and an `accuracy` alongside its power.
+Most moves are `(1, 1)` and 100; Double Kick and its ten relatives are
+`(2, 2)`, Triple Kick is `(3, 3)`, Population Bomb is `(1, 10)`, and
+twelve moves -- Bullet Seed, Pin Missile, Rock Blast and the rest -- are
+`(2, 5)`, rolled on the game's own 35/35/15/15 odds rather than
+uniformly. 47 moves carry a real sub-100 accuracy: Inferno and Zap
+Cannon at 50, Blizzard and Focus Blast at 70, Hydro Pump at 80. Every
+move not on that list is 100, which is true of most of the roster.
+
+`strike` rolls accuracy once, then hit count, then the 85-100% damage
+spread on each hit that lands, and stops early if the target faints
+partway through. It reports the way the games do -- `Charizard's attack
+missed!`, `Hit 3 time(s)!`. Move ranking goes through `expected_damage`,
+which prices in both, so Inferno at 100 power and 50 accuracy scores
+below Flamethrower at 90 and 100, exactly as it should. `damage_to`
+itself stays pure and deterministic: rolling inside it would make the
+strategies non-repeatable.
+
+Struggle is the fallback when nothing has PP left, on both sides of the
+screen. It ignores STAB and the type chart -- it will hit a Ghost that
+is immune to Normal -- and costs its user a quarter of max HP.
+
 `attack` is abstract, and `FireCreature`, `WaterCreature`,
 `GrassCreature` and `WildCreature` each implement it. They implement it
 *identically*, and that is not laziness -- see the note on abstract
@@ -103,9 +125,15 @@ ABCs that do not inherit from `Creature`. Concrete classes mix one into
 
 The capabilities are wired to real moves rather than to flat numbers:
 `heal` restores half of max HP but is gated by the PP of Recover or
-Soft-Boiled, `transform` reads Belly Drum's actual cost of half the
-user's HP for a doubled attack, and `guard` either halves incoming
-damage or, for Protect-class moves, cancels the next hit outright.
+Soft-Boiled, and `transform` and `guard` climb the real stat stages --
+three of them, at 1.5x, 2x and 2.5x, capped there. Belly Drum still pays
+half the user's HP, but it buys every remaining stage at once.
+Protect-class moves cancel the next hit instead of raising anything.
+
+Stages last for the rest of the battle; nothing decays them. The lines
+are the game's own -- `Blastoise's Defense rose!`, `Scizor's Attack
+won't go higher!`, `Snorlax cut its own HP and maximized its Attack!` --
+rather than a parenthesised summary.
 
 ### ex2 -- Strategy
 
@@ -116,7 +144,10 @@ print.
 - **Normal** picks the move with the best effectiveness against the
   defender.
 - **Easy** picks the worst one, deliberately.
-- **Aggressive** needs `transform`: it boosts, attacks, then reverts.
+- **Aggressive** needs `transform`: one boost, then it fights. Stacking
+  all three stages is a choice left to human players -- an AI that spends
+  three of a four-round battle on Swords Dance is easier to beat than one
+  that never boosts at all, measured at 62% against 52%.
 - **Defensive** needs `heal`: it opens with a guard if it has one, then
   alternates heal and attack.
 
@@ -173,9 +204,20 @@ subject does not authorise, and it exists for one reason: to put the
 architecture under a human at a keyboard, where design mistakes surface
 in seconds rather than in review.
 
-Pick a Pokemon by name or number, or roll one; pick a level; pick the
-strategy the auto-opponent runs; then fight it with arrow keys, HP bars,
-type tags and the real damage formula.
+Pick single player or two players sharing the terminal. Pick a Pokemon
+by name or number, from the starters -- where a third menu lets you take
+Charmander, Charmeleon or Charizard rather than always the last form --
+or roll one; pick a level; against the machine, pick the strategy it
+runs. Then fight with arrow keys, HP bars, type tags and per-move power.
+
+The arithmetic is the mainline damage formula,
+`(((2*L/5 + 2) * Power * A/D) / 50 + 2) * STAB * type * (0.85..1.00)`,
+over the real
+stat lines with 31 IVs and an even EV spread. One deviation: the result
+is scaled by `DAMAGE_SCALE` in `ex0/creature.py`. Unscaled, against a
+strategy that always picks its hardest-hitting move, the median battle
+ended in two turns and 18% of openings were one-shot kills. At 0.6 the
+median is four turns and one-shots are 1%.
 
 ## What the experiment found
 

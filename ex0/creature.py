@@ -1,11 +1,57 @@
 from abc import ABC, abstractmethod
 
-from .moves import STRUGGLE, Move
+from . import roll
+from .moves import ONCE, STRUGGLE, TWO_TO_FIVE, Move
 from .pokemon import Pokemon
 from .typechart import effect_message, effectiveness
 
 STAB = 1.5
-BOOST_FACTOR = 2
+MAX_STAGE = 3
+STAGE_STEP = 2
+HIT_ODDS = ((2, 35), (3, 70), (4, 85), (5, 100))
+ODDS_MAX = 100
+SPREAD_AVERAGE = 3.1
+SPREAD_LOW = 85
+RECOIL_DIVISOR = 4
+IV = 31
+EV_SHARE = 21
+DAMAGE_SCALE = 0.6
+
+
+def stat(base: int, level: int) -> int:
+    return ((2 * base + IV + EV_SHARE) * level) // 100
+
+
+def staged(base: int, stage: int) -> int:
+    return base * (STAGE_STEP + stage) // STAGE_STEP
+
+
+def roll_hits(move: Move) -> int:
+    """How many times this move lands, rolled fresh on every use."""
+    low, high = move.hits
+    if low == high:
+        return low
+    if move.hits == TWO_TO_FIVE:
+        chance = roll.between(1, ODDS_MAX)
+        for hits, upto in HIT_ODDS:
+            if chance <= upto:
+                return hits
+    return roll.between(low, high)
+
+
+def varied(damage: int) -> int:
+    """The game's 85-100% roll, applied to each hit that lands."""
+    if damage <= 0:
+        return 0
+    return max(1, damage * roll.between(SPREAD_LOW, ODDS_MAX) // ODDS_MAX)
+
+
+def average_hits(move: Move) -> float:
+    """What a move is worth before it is rolled, for ranking moves."""
+    low, high = move.hits
+    if move.hits == TWO_TO_FIVE:
+        return SPREAD_AVERAGE
+    return (low + high) / 2
 
 
 class UnknownMove(Exception):
@@ -20,16 +66,16 @@ class Creature(ABC):
         self.elements = pokemon.elements
         self.level = level
         self.moves = moves
-        self.max_hp = (2 * pokemon.hp * level) // 100 + level + 10
+        self.max_hp = stat(pokemon.hp, level) + level + 10
         self.current_hp = self.max_hp
-        self.attack_stat = (2 * pokemon.attack * level) // 100 + 5
-        self.defense_stat = (2 * pokemon.defense * level) // 100 + 5
+        self.attack_stat = stat(pokemon.attack, level) + 5
+        self.defense_stat = stat(pokemon.defense, level) + 5
         self.base_attack = self.attack_stat
         self.base_defense = self.defense_stat
-        self.speed_stat = (2 * pokemon.speed * level) // 100 + 5
+        self.speed_stat = stat(pokemon.speed, level) + 5
         self.pp = {move.name: move.pp for move in moves}
-        self.boosted = False
-        self.guarded = False
+        self.attack_stage = 0
+        self.defense_stage = 0
         self.protected = False
         self.attacked = False
 
@@ -59,17 +105,25 @@ class Creature(ABC):
     def damage_to(self, defender: "Creature", move: Move) -> int:
         if not move.power:
             return 0
-        stab = STAB if move.element in self.elements else 1.0
-        chart = effectiveness(move.element, defender.elements)
+        if move is STRUGGLE:
+            stab, chart = 1.0, 1.0
+        else:
+            stab = STAB if move.element in self.elements else 1.0
+            chart = effectiveness(move.element, defender.elements)
         base = (2 * self.level / 5 + 2) * move.power
         base = base * self.attack_stat / defender.defense_stat
-        return int((base / 50 + 2) * stab * chart)
+        return int((base / 50 + 2) * stab * chart * DAMAGE_SCALE)
+
+    def expected_damage(self, defender: "Creature", move: Move) -> int:
+        """What a move is worth once hits and accuracy are priced in."""
+        per_hit = self.damage_to(defender, move) * average_hits(move)
+        return int(per_hit * move.accuracy / ODDS_MAX)
 
     def best_move_against(self, defender: "Creature") -> Move:
         best = STRUGGLE
         score = -1
         for move in self.moves_with_effect("DAMAGE"):
-            hit = self.damage_to(defender, move)
+            hit = self.expected_damage(defender, move)
             if hit > score:
                 best, score = move, hit
         return best
@@ -78,7 +132,7 @@ class Creature(ABC):
         worst = STRUGGLE
         score = -1
         for move in self.moves_with_effect("DAMAGE"):
-            hit = self.damage_to(defender, move)
+            hit = self.expected_damage(defender, move)
             if score < 0 or hit < score:
                 worst, score = move, hit
         return worst
@@ -90,22 +144,53 @@ class Creature(ABC):
     def take(self, amount: int) -> None:
         self.current_hp = max(0, self.current_hp - amount)
 
+    def raise_attack(self, steps: int = 1) -> int:
+        """Climb the attack stages, returning how many were gained."""
+        room = MAX_STAGE - self.attack_stage
+        gained = min(steps, room)
+        self.attack_stage += gained
+        self.attack_stat = staged(self.base_attack, self.attack_stage)
+        return gained
+
+    def raise_defense(self, steps: int = 1) -> int:
+        room = MAX_STAGE - self.defense_stage
+        gained = min(steps, room)
+        self.defense_stage += gained
+        self.defense_stat = staged(self.base_defense, self.defense_stage)
+        return gained
+
+    def reset_attack(self) -> None:
+        self.attack_stage = 0
+        self.attack_stat = self.base_attack
+
     def strike(self, defender: "Creature",
                move: Move | None = None) -> str:
         if move is None:
             move = self.best_move_against(defender)
         self.spend(move)
+        line = f"{self.name} uses {move.name}!"
         if defender.protected:
             defender.protected = False
-            return (f"{self.name} uses {move.name}!"
-                    f" But {defender.name} protected itself!")
+            return f"{line} But {defender.name} protected itself!"
+        if roll.between(1, ODDS_MAX) > move.accuracy:
+            return f"{line}\n{self.name}'s attack missed!"
         hit = self.damage_to(defender, move)
-        defender.take(hit)
-        line = f"{self.name} uses {move.name}!"
-        chart = effectiveness(move.element, defender.elements)
-        note = effect_message(chart)
-        if note:
-            line = f"{line}\n{note}"
+        landed = 0
+        for _ in range(roll_hits(move)):
+            if defender.fainted():
+                break
+            defender.take(varied(hit))
+            landed += 1
+        if move is not STRUGGLE:
+            chart = effectiveness(move.element, defender.elements)
+            note = effect_message(chart)
+            if note:
+                line = f"{line}\n{note}"
+        if move.hits != ONCE:
+            line = f"{line}\nHit {landed} time(s)!"
+        if move is STRUGGLE:
+            self.take(self.max_hp // RECOIL_DIVISOR)
+            line = f"{line}\n{self.name} is hit with recoil!"
         return line
 
     def describe(self) -> str:

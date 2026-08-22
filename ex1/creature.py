@@ -1,15 +1,22 @@
-from ex0.creature import Creature
+from ex0.creature import MAX_STAGE, Creature
+from ex0.moves import Move
 
 from .capability import (DefendCapability, HealCapability,
                          TransformCapability)
 
 HEAL_DIVISOR = 2
 TRANSFORM_COST_DIVISOR = 2
-TRANSFORM_MULTIPLIER = 2
-BOOST_NUMERATOR = 3
-BOOST_DENOMINATOR = 2
 COSTLY_BOOST = "Belly Drum"
-GUARD_MULTIPLIER = 2
+ATTACK = "Attack"
+DEFENSE = "Defense"
+RISE = {1: "rose!", 2: "sharply rose!", 3: "rose drastically!"}
+
+
+def rise_line(name: str, which: str, gained: int) -> str:
+    """The line the real game prints when a stat stage moves."""
+    if not gained:
+        return f"{name}'s {which} won't go higher!"
+    return f"{name}'s {which} {RISE[gained]}"
 
 
 def do_heal(self: Creature) -> str:
@@ -24,33 +31,35 @@ def do_heal(self: Creature) -> str:
     return f"{self.name} uses {move.name}! (+{amount} HP)"
 
 
+def do_belly_drum(self: Creature, move: Move) -> str:
+    """Half the user's HP for every remaining attack stage at once."""
+    self.spend(move)
+    cost = self.max_hp // TRANSFORM_COST_DIVISOR
+    if self.current_hp <= cost or self.attack_stage >= MAX_STAGE:
+        return f"{self.name} uses {move.name}!\nBut it failed!"
+    self.current_hp -= cost
+    self.raise_attack(MAX_STAGE)
+    return (f"{self.name} uses {move.name}!\n"
+            f"{self.name} cut its own HP and maximized its Attack!")
+
+
 def do_transform(self: Creature) -> str:
     available = self.moves_with_effect("BOOST")
     if not available:
         return f"{self.name} has no transform moves left!"
     move = available[0]
-    if move.name != COSTLY_BOOST:
-        self.spend(move)
-        self.attack_stat = (self.base_attack * BOOST_NUMERATOR
-                            // BOOST_DENOMINATOR)
-        self.boosted = True
-        return f"{self.name} uses {move.name}! (attack raised)"
-    cost = self.max_hp // TRANSFORM_COST_DIVISOR
-    if self.current_hp <= cost:
-        return f"{self.name} is too weak to transform!"
+    if move.name == COSTLY_BOOST:
+        return do_belly_drum(self, move)
     self.spend(move)
-    self.current_hp -= cost
-    self.attack_stat = self.base_attack * TRANSFORM_MULTIPLIER
-    self.boosted = True
-    return (f"{self.name} uses {move.name}! "
-            f"(attack doubled, -{cost} HP)")
+    gained = self.raise_attack()
+    return (f"{self.name} uses {move.name}!\n"
+            f"{rise_line(self.name, ATTACK, gained)}")
 
 
 def do_revert(self: Creature) -> str:
-    if not self.boosted:
+    if not self.attack_stage:
         return f"{self.name} is already in its normal form."
-    self.attack_stat = self.base_attack
-    self.boosted = False
+    self.reset_attack()
     return f"{self.name} returns to normal."
 
 
@@ -60,19 +69,16 @@ def do_guard(self: Creature) -> str:
         move = shields[0]
         self.spend(move)
         self.protected = True
-        return (f"{self.name} uses {move.name}!"
-                f" (the next hit will not land)")
+        return (f"{self.name} uses {move.name}!\n"
+                f"{self.name} protected itself!")
     available = self.moves_with_effect("GUARD")
     if not available:
         return f"{self.name} has nothing left to guard with!"
     move = available[0]
     self.spend(move)
-    if self.guarded:
-        return f"{self.name}'s defense is already raised!"
-    self.defense_stat = self.base_defense * GUARD_MULTIPLIER
-    self.guarded = True
-    return (f"{self.name} uses {move.name}!"
-            f" (incoming damage halved)")
+    gained = self.raise_defense()
+    return (f"{self.name} uses {move.name}!\n"
+            f"{rise_line(self.name, DEFENSE, gained)}")
 
 
 class HealingCreature(Creature, HealCapability):
