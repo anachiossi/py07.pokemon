@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+
+# workshop notes -- these live in the 42 repo, not here
+PLAN.md
+PLAN_EX1_EX2.md
+POKEDEX.md

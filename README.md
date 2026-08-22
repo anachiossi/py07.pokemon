@@ -242,4 +242,3 @@ mypy --strict ex0/ ex1/ ex2/ *.py
 
 Both clean. 1025 species, 9 generations, 709 moves, 18 types, and every
 `POKEDEX` key equal to its entry's `number`.
-# py07.pokemon
