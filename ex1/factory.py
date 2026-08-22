@@ -5,6 +5,7 @@ from ex0.pokemon import known_moves
 from .creature import (DefendingCreature, HealingCreature,
                        TransformCreature)
 
+# examples of healing, transforming, and defending creatures for testing
 CHANSEY = 113
 MUNCHLAX = 446
 SHELLDER = 90
@@ -63,7 +64,6 @@ class TransformCreatureFactory(CreatureFactory):
 
 
 class DefendingCreatureFactory(CreatureFactory):
-    """Shellder -> Cloyster, the shells."""
 
     def __init__(self, level: int | None = None,
                  number: int = SHELLDER) -> None:

@@ -20,11 +20,6 @@ class TransformCapability(ABC):
 
 
 class DefendCapability(ABC):
-    """Something able to harden itself against incoming damage.
-
-    Independent of Creature, like the other two. The persistent state
-    lives on the concrete class and is read when damage is computed.
-    """
 
     @abstractmethod
     def guard(self) -> str:
